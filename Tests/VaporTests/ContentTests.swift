@@ -295,6 +295,49 @@ final class ContentTests: XCTestCase {
         let content = try request.content.decode(SampleContent.self)
         XCTAssertEqual(content.name, "new name after decode")
     }
+
+    func testQueryHooks() throws {
+        let app = Application()
+        defer { app.shutdown() }
+
+        let request = Request(
+            application: app,
+            collectedBody: .init(string:""),
+            on: EmbeddedEventLoop()
+        )
+        request.url.query = "name=before+decode"
+        request.headers.contentType = .json
+
+        let query = try request.query.decode(SampleContent.self)
+        XCTAssertEqual(query.name, "new name after decode")
+        try request.query.encode(query)
+        XCTAssertEqual(request.url.query, "name=new%20name")
+    }
+
+    func testSnakeCaseCodingKeyError() throws {
+        let app = Application()
+        defer { app.shutdown() }
+
+        let req = Request(application: app, on: app.eventLoopGroup.next())
+        try req.content.encode([
+            "title": "The title"
+        ], as: .json)
+
+        struct PostInput: Content {
+            enum CodingKeys: String, CodingKey {
+                case id, title, isFree = "is_free"
+            }
+            let id: UUID?
+            let title: String
+            let isFree: Bool
+        }
+        XCTAssertThrowsError(try req.content.decode(PostInput.self)) { error in
+            XCTAssertEqual(
+                (error as? AbortError)?.reason,
+                "Value required for key 'is_free'."
+            )
+        }
+    }
 }
 
 private struct SampleContent: Content {

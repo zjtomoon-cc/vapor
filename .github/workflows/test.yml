@@ -5,6 +5,34 @@ on:
     branches:
     - master
 jobs:
+  providers:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        provider:
+          - jwt
+          - fluent
+          - leaf
+          - queues
+          - apns
+    container: swift:5.2-focal
+    steps: 
+      - name: Check out Vapor
+        uses: actions/checkout@v2
+        with:
+          path: vapor
+      - name: Check out provider
+        uses: actions/checkout@v2
+        with:
+          repository: vapor/${{ matrix.provider }}
+          path: provider
+      - name: Use local Vapor
+        run: swift package edit vapor --path ../vapor
+        working-directory: provider
+      - name: Run tests with Thread Sanitizer
+        run: swift test --enable-test-discovery --sanitize=thread
+        working-directory: provider
   linux:
     runs-on: ubuntu-latest
     strategy:
@@ -24,16 +52,17 @@ jobs:
           - swiftlang/swift:nightly-5.3-xenial
           - swiftlang/swift:nightly-5.3-bionic
           # Master Unstable
-          - swiftlang/swift:nightly-master-xenial
-          - swiftlang/swift:nightly-master-bionic
-          - swiftlang/swift:nightly-master-focal
-          - swiftlang/swift:nightly-master-centos8
-          - swiftlang/swift:nightly-master-amazonlinux2
+          # - swiftlang/swift:nightly-master-xenial
+          # - swiftlang/swift:nightly-master-bionic
+          # - swiftlang/swift:nightly-master-focal
+          # - swiftlang/swift:nightly-master-centos8
+          # - swiftlang/swift:nightly-master-amazonlinux2
     container: ${{ matrix.image }}
     steps:
       - name: Check out code
         uses: actions/checkout@v2
       - name: Run tests with Thread Sanitizer
+        timeout-minutes: 10
         run: swift test --enable-test-discovery --sanitize=thread
   macOS:
     runs-on: macos-latest
