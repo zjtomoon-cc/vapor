@@ -12,7 +12,7 @@ final class ClientTests: XCTestCase {
             $0.redirect(to: "foo")
         }
 
-        try app.server.start(hostname: "localhost", port: 8080)
+        try app.server.start(address: .hostname("localhost", port: 8080))
         defer { app.server.shutdown() }
 
         let res = try app.client.get("http://localhost:8080/redirect").wait()
@@ -30,7 +30,7 @@ final class ClientTests: XCTestCase {
             $0.redirect(to: "foo")
         }
 
-        try app.server.start(hostname: "localhost", port: 8080)
+        try app.server.start(address: .hostname("localhost", port: 8080))
         defer { app.server.shutdown() }
 
         _ = try app.client.get("http://localhost:8080/redirect").wait()
@@ -132,6 +132,17 @@ final class ClientTests: XCTestCase {
         XCTAssertEqual(app.customClient.requests.count, 1)
         XCTAssertEqual(app.customClient.requests.first?.url.host, "vapor.codes")
     }
+
+    func testClientLogging() throws {
+        let app = Application(.testing)
+        defer { app.shutdown() }
+        let logs = TestLogHandler()
+        app.logger = logs.logger
+
+        _ = try app.client.get("https://httpbin.org/json").wait()
+
+        XCTAssertNotNil(logs.metadata["ahc-request-id"])
+    }
 }
 
 private final class CustomClient: Client {
@@ -175,5 +186,46 @@ private extension Application.Clients.Provider {
         .init {
             $0.clients.use { $0.customClient }
         }
+    }
+}
+
+final class TestLogHandler: LogHandler {
+    subscript(metadataKey key: String) -> Logger.Metadata.Value? {
+        get { self.metadata[key] }
+        set { self.metadata[key] = newValue }
+    }
+
+    var metadata: Logger.Metadata
+    var logLevel: Logger.Level
+    var messages: [Logger.Message]
+
+    var logger: Logger {
+        .init(label: "test") { label in
+            self
+        }
+    }
+
+    init() {
+        self.metadata = [:]
+        self.logLevel = .trace
+        self.messages = []
+    }
+
+    func log(
+        level: Logger.Level,
+        message: Logger.Message,
+        metadata: Logger.Metadata?,
+        source: String,
+        file: String,
+        function: String,
+        line: UInt
+    ) {
+        self.messages.append(message)
+    }
+
+    func read() -> [String] {
+        let copy = self.messages
+        self.messages = []
+        return copy.map { $0.description }
     }
 }

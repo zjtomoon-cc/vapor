@@ -13,7 +13,7 @@ let package = Package(
     ],
     dependencies: [
         // HTTP client library built on SwiftNIO
-        .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.0.0"),
+        .package(url: "https://github.com/swift-server/async-http-client.git", from: "1.2.0"),
     
         // Sugary extensions for the SwiftNIO library
         .package(url: "https://github.com/vapor/async-kit.git", from: "1.0.0"),
@@ -31,13 +31,13 @@ let package = Package(
         .package(url: "https://github.com/swift-server/swift-backtrace.git", from: "1.1.1"),
         
         // Event-driven network application framework for high performance protocol servers & clients, non-blocking.
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.13.1"),
+        .package(url: "https://github.com/apple/swift-nio.git", from: "2.18.0"),
         
         // Bindings to OpenSSL-compatible libraries for TLS support in SwiftNIO
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.8.0"),
         
         // HTTP/2 support for SwiftNIO
-        .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.11.0"),
+        .package(url: "https://github.com/apple/swift-nio-http2.git", from: "1.13.0"),
         
         // Useful code around SwiftNIO.
         .package(url: "https://github.com/apple/swift-nio-extras.git", from: "1.0.0"),
@@ -50,12 +50,14 @@ let package = Package(
 
         // WebSocket client library built on SwiftNIO
         .package(url: "https://github.com/vapor/websocket-kit.git", from: "2.0.0"),
+        
+        // MultipartKit, Multipart encoding and decoding
+        .package(url: "https://github.com/vapor/multipart-kit.git", from: "4.0.0"),
     ],
     targets: [
         // C helpers
         .target(name: "CBase32"),
         .target(name: "CBcrypt"),
-        .target(name: "CMultipartParser"),
         .target(name: "COperatingSystem"),
         .target(name: "CURLParser"),
 
@@ -66,7 +68,6 @@ let package = Package(
             .product(name: "Backtrace", package: "swift-backtrace"),
             .target(name: "CBase32"),
             .target(name: "CBcrypt"),
-            .target(name: "CMultipartParser"),
             .target(name: "COperatingSystem"),
             .target(name: "CURLParser"),
             .product(name: "ConsoleKit", package: "console-kit"),
@@ -83,6 +84,7 @@ let package = Package(
             .product(name: "Crypto", package: "swift-crypto"),
             .product(name: "RoutingKit", package: "routing-kit"),
             .product(name: "WebSocketKit", package: "websocket-kit"),
+            .product(name: "MultipartKit", package: "multipart-kit"),
         ]),
         // Vapor 3 API shim
         .target(name: "_Vapor3", dependencies: [
