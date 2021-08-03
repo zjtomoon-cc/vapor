@@ -1,5 +1,4 @@
 import Vapor
-import _Vapor3
 
 @main
 struct MyApp: ApplicationRoot {
@@ -8,7 +7,7 @@ struct MyApp: ApplicationRoot {
         switch app.environment {
         case .tls:
             app.http.server.configuration.port = 8443
-            try app.http.server.configuration.tlsConfiguration = .forServer(
+            try app.http.server.configuration.tlsConfiguration = .makeServerConfiguration(
                 certificateChain: [
                     .certificate(.init(
                         file: "/Users/tanner0101/dev/vapor/net-kit/certs/cert.pem",
@@ -23,18 +22,19 @@ struct MyApp: ApplicationRoot {
     }
     
     static func routes(_ app: Application) throws {
-        app.on(.POST, "ping") { req in
+        app.on(.GET, "ping") { req -> StaticString in
             return "123" as StaticString
         }
-        
+
+
         // ( echo -e 'POST /slow-stream HTTP/1.1\r\nContent-Length: 1000000000\r\n\r\n'; dd if=/dev/zero; ) | nc localhost 8080
-        app.on(.POST, "slow-stream", body: .stream) { req -> Future<String> in
+        app.on(.POST, "slow-stream", body: .stream) { req -> EventLoopFuture<String> in
             let done = req.eventLoop.makePromise(of: String.self)
-            
+
             var total = 0
             req.body.drain { result in
                 let promise = req.eventLoop.makePromise(of: Void.self)
-                
+
                 switch result {
                 case .buffer(let buffer):
                     req.eventLoop.scheduleTask(in: .milliseconds(1000)) {
@@ -47,7 +47,7 @@ struct MyApp: ApplicationRoot {
                     promise.succeed(())
                     done.succeed(total.description)
                 }
-                
+
                 // manually return pre-completed future
                 // this should balloon in memory
                 // return req.eventLoop.makeSucceededFuture(())
@@ -56,8 +56,16 @@ struct MyApp: ApplicationRoot {
                 // this should use very little memory
                 return promise.futureResult
             }
-            
+
             return done.futureResult
+        }
+
+        app.get("test", "head") { req -> String in
+            return "OK!"
+        }
+
+        app.post("test", "head") { req -> String in
+            return "OK!"
         }
         
         app.post("login") { req -> String in
@@ -68,7 +76,7 @@ struct MyApp: ApplicationRoot {
         app.on(.POST, "large-file", body: .collect(maxSize: 1_000_000_000)) { req -> String in
             return req.body.data?.readableBytes.description  ?? "none"
         }
-        
+
         app.get("json") { req -> [String: String] in
             return ["foo": "bar"]
         }.description("returns some test json")
@@ -80,9 +88,9 @@ struct MyApp: ApplicationRoot {
                     ws.close(promise: nil)
                 }
             }
-            
+
             let ip = req.remoteAddress?.description ?? "<no ip>"
-            ws.send("Hello � \(ip)")
+            ws.send("Hello 👋 \(ip)")
         }
         
         app.on(.POST, "file", body: .stream) { req -> EventLoopFuture<String> in
@@ -100,7 +108,7 @@ struct MyApp: ApplicationRoot {
             }
             return promise.futureResult
         }
-        
+
         app.get("shutdown") { req -> HTTPStatus in
             guard let running = req.application.running else {
                 throw Abort(.internalServerError)
@@ -108,7 +116,7 @@ struct MyApp: ApplicationRoot {
             running.stop()
             return .ok
         }
-        
+
         let cache = MemoryCache()
         app.get("cache", "get", ":key") { req -> String in
             guard let key = req.parameters.get("key") else {
@@ -126,15 +134,15 @@ struct MyApp: ApplicationRoot {
             cache.set(key, to: value)
             return "\(key) = \(value)"
         }
-        
+
         app.get("hello", ":name") { req in
             return req.parameters.get("name") ?? "<nil>"
         }
-        
+
         app.get("search") { req in
             return req.query["q"] ?? "none"
         }
-        
+
         let sessions = app.grouped("sessions")
             .grouped(app.sessions.middleware)
         sessions.get("set", ":value") { req -> HTTPStatus in
@@ -148,11 +156,11 @@ struct MyApp: ApplicationRoot {
             req.session.destroy()
             return "done"
         }
-        
+
         app.get("client") { req in
             return req.client.get("http://httpbin.org/status/201").map { $0.description }
         }
-        
+
         app.get("client-json") { req -> EventLoopFuture<String> in
             struct HTTPBinResponse: Decodable {
                 struct Slideshow: Decodable {
@@ -177,23 +185,28 @@ struct MyApp: ApplicationRoot {
         app.get("view") { req in
             req.view.render("hello.txt", ["name": "world"])
         }
-        
+
         app.get("error") { req -> String in
             throw TestError()
         }
-        
+
         app.get("secret") { (req) -> EventLoopFuture<String> in
             return Environment
                 .secret(key: "PASSWORD_SECRET", fileIO: req.application.fileio, on: req.eventLoop)
                 .unwrap(or: Abort(.badRequest))
         }
-        
+
         app.on(.POST, "max-256", body: .collect(maxSize: 256)) { req -> HTTPStatus in
             print("in route")
             return .ok
         }
-        
+
         app.on(.POST, "upload", body: .stream) { req -> EventLoopFuture<HTTPStatus> in
+            enum BodyStreamWritingToDiskError: Error {
+                case streamFailure(Error)
+                case fileHandleClosedFailure(Error)
+                case multipleFailures([BodyStreamWritingToDiskError])
+            }
             return req.application.fileio.openFile(
                 path: "/Users/tanner/Desktop/foo.txt",
                 mode: .write,
@@ -209,13 +222,24 @@ struct MyApp: ApplicationRoot {
                             buffer: buffer,
                             eventLoop: req.eventLoop
                         )
-                    case .error(let error):
-                        promise.fail(error)
-                        try! fileHandle.close()
+                    case .error(let drainError):
+                        do {
+                            try fileHandle.close()
+                            promise.fail(BodyStreamWritingToDiskError.streamFailure(drainError))
+                        } catch {
+                            promise.fail(BodyStreamWritingToDiskError.multipleFailures([
+                                .fileHandleClosedFailure(error),
+                                .streamFailure(drainError)
+                            ]))
+                        }
                         return req.eventLoop.makeSucceededFuture(())
                     case .end:
-                        promise.succeed(.ok)
-                        try! fileHandle.close()
+                        do {
+                            try fileHandle.close()
+                            promise.succeed(.ok)
+                        } catch {
+                            promise.fail(BodyStreamWritingToDiskError.fileHandleClosedFailure(error))
+                        }
                         return req.eventLoop.makeSucceededFuture(())
                     }
                 }
@@ -262,14 +286,14 @@ struct TestError: AbortError, DebuggableError {
     var status: HTTPResponseStatus {
         .internalServerError
     }
-    
+
     var reason: String {
         "This is a test."
     }
-    
+
     var source: ErrorSource?
     var stackTrace: StackTrace?
-    
+
     init(
         file: String = #file,
         function: String = #function,

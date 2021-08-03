@@ -1,5 +1,6 @@
 import Backtrace
 
+/// Core type representing a Vapor application.
 public final class Application {
     public var environment: Environment
     public let eventLoopGroupProvider: EventLoopGroupProvider
@@ -7,7 +8,7 @@ public final class Application {
     public var storage: Storage
     public private(set) var didShutdown: Bool
     public var logger: Logger
-    private var isBooted: Bool
+    var isBooted: Bool
 
     public struct Lifecycle {
         var handlers: [LifecycleHandler]
@@ -125,7 +126,7 @@ public final class Application {
         self.logger.debug("Application shutting down")
 
         self.logger.trace("Shutting down providers")
-        self.lifecycle.handlers.forEach { $0.shutdown(self) }
+        self.lifecycle.handlers.reversed().forEach { $0.shutdown(self) }
         self.lifecycle.handlers = []
         
         self.logger.trace("Clearing Application storage")
@@ -140,7 +141,7 @@ public final class Application {
             do {
                 try self.eventLoopGroup.syncShutdownGracefully()
             } catch {
-                self.logger.error("Shutting down EventLoopGroup failed: \(error)")
+                self.logger.warning("Shutting down EventLoopGroup failed: \(error)")
             }
         }
 

@@ -192,6 +192,12 @@ final class RouteTests: XCTestCase {
         }) { res in
             XCTAssertEqual(res.status, .badRequest)
             XCTAssertContains(res.body.string, "email is not a valid email address")
+        }.test(.POST, "/users") { res in
+            XCTAssertEqual(res.status, .unprocessableEntity)
+            XCTAssertContains(res.body.string.replacingOccurrences(of: "\\", with: ""), "Missing \"Content-Type\" header")
+        }.test(.POST, "/users", headers: ["Content-Type":"application/json"]) { res in
+            XCTAssertEqual(res.status, .unprocessableEntity)
+            XCTAssertContains(res.body.string, "Empty Body")
         }
     }
 
@@ -220,22 +226,56 @@ final class RouteTests: XCTestCase {
         }
     }
 
-    func testHeadRequest() throws {
+    func testHeadRequestWithConstantPathReturnsOK() throws {
         let app = Application(.testing)
         defer { app.shutdown() }
 
         app.get("hello") { req -> String in
-            XCTAssertEqual(req.method, .HEAD)
             return "hi"
         }
 
         try app.testable(method: .running).test(.HEAD, "/hello") { res in
+            XCTAssertEqual(res.status, .ok)
+            XCTAssertEqual(res.headers.first(name: .contentLength), "0")
+            XCTAssertEqual(res.body.readableBytes, 0)
+        }
+    }
+
+    func testHeadRequestWithParameterForwardedToGet() throws {
+        let app = Application(.testing)
+        defer { app.shutdown() }
+
+        app.get("hello", ":name") { req -> String in
+            XCTAssertEqual(req.method, .HEAD)
+            return "hi"
+        }
+
+        try app.testable(method: .running).test(.HEAD, "/hello/joe") { res in
             XCTAssertEqual(res.status, .ok)
             XCTAssertEqual(res.headers.first(name: .contentLength), "2")
             XCTAssertEqual(res.body.readableBytes, 0)
         }
     }
 
+    func testExplicitHeadRouteHandlerOverridesGeneratedHandler() throws {
+        let app = Application(.testing)
+        defer { app.shutdown() }
+
+        app.get("hello") { req -> Response in
+            return Response(status: .badRequest)
+        }
+
+        app.on(.HEAD, "hello") { req -> Response in
+            return Response(status: .found)
+        }
+
+        try app.testable(method: .running).test(.HEAD, "/hello") { res in
+            XCTAssertEqual(res.status, .found)
+            XCTAssertEqual(res.headers.first(name: .contentLength), "0")
+            XCTAssertEqual(res.body.readableBytes, 0)
+        }
+    }
+    
     func testInvalidCookie() throws {
         let app = Application(.testing)
         defer { app.shutdown() }

@@ -40,6 +40,8 @@ final class WebSocketTests: XCTestCase {
             ws.close(promise: nil)
         }
 
+        app.environment.arguments = ["serve"]
+
         try app.start()
 
         do {
@@ -61,6 +63,7 @@ final class WebSocketTests: XCTestCase {
             ws.send("foo")
             ws.close(promise: nil)
         }
+        app.environment.arguments = ["serve"]
 
         try app.start()
         let promise = app.eventLoopGroup.next().makePromise(of: String.self)
@@ -69,6 +72,35 @@ final class WebSocketTests: XCTestCase {
             on: app.eventLoopGroup.next()
         ) { ws in
             // do nothing
+            ws.onText { ws, string in
+                promise.succeed(string)
+            }
+        }.cascadeFailure(to: promise)
+
+        try XCTAssertEqual(promise.futureResult.wait(), "foo")
+    }
+
+    func testManualUpgradeToWebSocket() throws {
+        let app = Application(.testing)
+        defer { app.shutdown() }
+
+        app.http.server.configuration.port = 8080
+
+        app.get("foo") { req in
+            return req.webSocket { req, ws in
+                ws.send("foo")
+                ws.close(promise: nil)
+            }
+        }
+
+        app.environment.arguments = ["serve"]
+
+        try app.start()
+        let promise = app.eventLoopGroup.next().makePromise(of: String.self)
+        WebSocket.connect(
+            to: "ws://localhost:8080/foo",
+            on: app.eventLoopGroup.next()
+        ) { ws in
             ws.onText { ws, string in
                 promise.succeed(string)
             }
@@ -128,6 +160,8 @@ final class WebSocketTests: XCTestCase {
             webSockets.track(ws)
             ws.send("hello")
         }
+
+        app.environment.arguments = ["serve"]
 
         try app.start()
 

@@ -4,12 +4,14 @@ import PackageDescription
 let package = Package(
     name: "vapor",
     platforms: [
-       .macOS(.v10_15)
+        .macOS(.v10_15),
+        .iOS(.v13),
+        .tvOS(.v13),
+        .watchOS(.v6)
     ],
     products: [
         .library(name: "Vapor", targets: ["Vapor"]),
         .library(name: "XCTVapor", targets: ["XCTVapor"]),
-        .library(name: "_Vapor3", targets: ["_Vapor3"]),
     ],
     dependencies: [
         // HTTP client library built on SwiftNIO
@@ -52,7 +54,7 @@ let package = Package(
         .package(url: "https://github.com/vapor/websocket-kit.git", from: "2.0.0"),
         
         // MultipartKit, Multipart encoding and decoding
-        .package(url: "https://github.com/vapor/multipart-kit.git", from: "4.0.0"),
+        .package(url: "https://github.com/vapor/multipart-kit.git", from: "4.2.1"),
     ],
     targets: [
         // C helpers
@@ -86,16 +88,10 @@ let package = Package(
             .product(name: "WebSocketKit", package: "websocket-kit"),
             .product(name: "MultipartKit", package: "multipart-kit"),
         ]),
-        // Vapor 3 API shim
-        .target(name: "_Vapor3", dependencies: [
-            .target(name: "Vapor"),
-            .product(name: "_NIO1APIShims", package: "swift-nio")
-        ]),
-
+	
         // Development
         .target(name: "Development", dependencies: [
             .target(name: "Vapor"),
-            .target(name: "_Vapor3"),
         ], swiftSettings: [
             // Enable better optimizations when building in Release configuration. Despite the use of
             // the `.unsafeFlags` construct required by SwiftPM, this flag is recommended for Release
