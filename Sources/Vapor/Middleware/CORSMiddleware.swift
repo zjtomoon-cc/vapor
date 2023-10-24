@@ -6,7 +6,7 @@ import NIOCore
 ///
 /// - note: Make sure this middleware is inserted before all your error/abort middlewares,
 ///         so that even the failed request responses contain proper CORS information.
-public final class CORSMiddleware: Middleware {
+public final class CORSMiddleware: AsyncMiddleware {
     /// Option for the allow origin header in responses for CORS requests.
     ///
     /// - none: Disallows any origin.
@@ -122,44 +122,41 @@ public final class CORSMiddleware: Middleware {
     public init(configuration: Configuration = .default()) {
         self.configuration = configuration
     }
-
-    public func respond(to request: Request, chainingTo next: Responder) -> EventLoopFuture<Response> {
-        // Check if it's valid CORS request
+    
+    public func respond(to request: Request, chainingTo next: AsyncResponder) async throws -> Response {
         guard request.headers[.origin].first != nil else {
-            return next.respond(to: request)
+            return try await next.respond(to: request)
         }
         
         // Determine if the request is pre-flight.
         // If it is, create empty response otherwise get response from the responder chain.
-        let response = request.isPreflight
-            ? request.eventLoop.makeSucceededFuture(.init())
+        let response = try await request.isPreflight
+            ? .init()
             : next.respond(to: request)
         
-        return response.map { response in
-            // Modify response headers based on CORS settings
-            let originBasedAccessControlAllowHeader = self.configuration.allowedOrigin.header(forRequest: request)
-            response.headers.replaceOrAdd(name: .accessControlAllowOrigin, value: originBasedAccessControlAllowHeader)
-            response.headers.replaceOrAdd(name: .accessControlAllowHeaders, value: self.configuration.allowedHeaders)
-            response.headers.replaceOrAdd(name: .accessControlAllowMethods, value: self.configuration.allowedMethods)
-            
-            if let exposedHeaders = self.configuration.exposedHeaders {
-                response.headers.replaceOrAdd(name: .accessControlExpose, value: exposedHeaders)
-            }
-            
-            if let cacheExpiration = self.configuration.cacheExpiration {
-                response.headers.replaceOrAdd(name: .accessControlMaxAge, value: String(cacheExpiration))
-            }
-            
-            if self.configuration.allowCredentials {
-                response.headers.replaceOrAdd(name: .accessControlAllowCredentials, value: "true")
-            }
-
-            if case .originBased = self.configuration.allowedOrigin, !originBasedAccessControlAllowHeader.isEmpty {
-                response.headers.add(name: .vary, value: "origin")
-            }
-            
-            return response
+        // Modify response headers based on CORS settings
+        let originBasedAccessControlAllowHeader = self.configuration.allowedOrigin.header(forRequest: request)
+        response.headers.replaceOrAdd(name: .accessControlAllowOrigin, value: originBasedAccessControlAllowHeader)
+        response.headers.replaceOrAdd(name: .accessControlAllowHeaders, value: self.configuration.allowedHeaders)
+        response.headers.replaceOrAdd(name: .accessControlAllowMethods, value: self.configuration.allowedMethods)
+        
+        if let exposedHeaders = self.configuration.exposedHeaders {
+            response.headers.replaceOrAdd(name: .accessControlExpose, value: exposedHeaders)
         }
+        
+        if let cacheExpiration = self.configuration.cacheExpiration {
+            response.headers.replaceOrAdd(name: .accessControlMaxAge, value: String(cacheExpiration))
+        }
+        
+        if self.configuration.allowCredentials {
+            response.headers.replaceOrAdd(name: .accessControlAllowCredentials, value: "true")
+        }
+
+        if case .originBased = self.configuration.allowedOrigin, !originBasedAccessControlAllowHeader.isEmpty {
+            response.headers.add(name: .vary, value: "origin")
+        }
+        
+        return response
     }
 }
 
