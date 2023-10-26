@@ -26,7 +26,7 @@ final class AsyncRequestTests: XCTestCase {
         app.shutdown()
     }
     
-    func testStreamingRequest() throws {
+    func testStreamingRequest() async throws {
         app.http.server.configuration.hostname = "127.0.0.1"
         app.http.server.configuration.port = 0
         
@@ -60,7 +60,7 @@ final class AsyncRequestTests: XCTestCase {
         
         let response: HTTPClientResponse = try await app.http.client.shared.execute(request, timeout: .seconds(5))
         XCTAssertEqual(response.status, .ok)
-        let body = try await response.body.collect(upTo: 1024 * 1024)
+        let body = try await response.body.collect(upTo: 1024)
         XCTAssertEqual(body.string, testValue)
     }
 }
